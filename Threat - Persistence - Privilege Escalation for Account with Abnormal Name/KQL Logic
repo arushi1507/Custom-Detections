@@ -1,1 +1,19 @@
-
+let exceptions = 
+    _GetWatchlist('mpg_34k_exceptions_csv')
+    | project dst_user, src_user;
+let dst_userExclusion = exceptions | where isnotempty(dst_user) and (src_user == "*" or src_user =="") | project dst_user;
+let src_userExclusion = exceptions | where isnotempty(src_user) and (dst_user == "*" or dst_user =="") | project src_user;
+AuditLogs
+| where Category == "RoleManagement"
+    and LoggedByService in ("Core Directory", "PIM")
+    and ActivityDisplayName has_any ("Add member to role", "Add eligible member to role")
+    and Result == "success"
+| where not (LoggedByService == "Core Directory" and InitiatedBy.app.displayName == "MS-PIM")
+| where not (LoggedByService == "PIM" and not(ActivityDisplayName has "completed (permanent)"))
+| extend src_user = coalesce(InitiatedBy.user.userPrincipalName, InitiatedBy.app.displayName)
+| mv-expand TargetResources
+| extend Targetuser = iff(TargetResources.type == "User", TargetResources.userPrincipalName, "")
+| extend group = iff(TargetResources.type == "Role", TargetResources.displayName, "")
+| where group matches regex "Admin" and  not(Targetuser has_any ("-0@gmail.","-1@gmail.","-2@gmail."))
+| where not(Targetuser has_any (dst_userExclusion) and src_user has_any (src_userExclusion))
+| project TimeGenerated , OperationName , Result ,ResultDescription,ActivityDateTime , LoggedByService ,Category, src_user, Targetuser, group
