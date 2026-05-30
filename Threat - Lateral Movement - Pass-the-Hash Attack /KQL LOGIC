@@ -1,1 +1,34 @@
-
+let SecLogonEvents = SecurityEvent
+| where EventID == 4624 and LogonType == 9
+| where LogonProcessName has "seclogon" and AuthenticationPackageName has "Negotiate"
+| where Account !has "ANONYMOUS" and LmPackageName != "NTLM V2"
+| summarize
+    Count = count(),
+    Destinations = make_set(Computer),
+    DistinctDest = dcount(Computer),
+    LogonProcesses = make_set(LogonProcessName),
+    LogonTypes = make_set(LogonType),
+    SourceUsers = make_set(Account),
+    AuthPackages = make_set(AuthenticationPackageName),
+    KeyLengths = make_set(KeyLength)
+    by bin(TimeGenerated, 5m), Computer, _ResourceId
+| extend EventType = "SecLogon";
+let NTLMSSPEvents = SecurityEvent
+| where EventID == 4624 and Account !has "ANONYMOUS"
+| where LmPackageName !~ "NTLM V2" and LogonProcessName has "NTLMSSP"
+| where KeyLength == 0
+| summarize
+    Count = count(),
+    Destinations = make_set(Computer),
+    DistinctDest = dcount(Computer),
+    LogonProcesses = make_set(LogonProcessName),
+    LogonTypes = make_set(LogonType),
+    SourceUsers = make_set(Account),
+    AuthPackages = make_set(AuthenticationPackageName),
+    KeyLengths = make_set(KeyLength)
+    by bin(TimeGenerated, 5m), Computer, _ResourceId
+| where DistinctDest >= 3
+| extend EventType = "NTLMSSP";
+SecLogonEvents
+| union NTLMSSPEvents
+| sort by TimeGenerated desc
