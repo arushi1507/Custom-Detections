@@ -1,0 +1,13 @@
+SecurityEvent
+| where EventID == 4738
+| extend ParsedEventData = parse_xml(EventData)
+| mv-apply Data = ParsedEventData.EventData.Data on (
+    where tostring(Data['@Name']) == "UserAccessControl"
+    | extend UserAccessControl = tostring(Data['#text'])
+)
+| where UserAccessControl !contains "%%2048"
+| extend
+    TimeGenerated_fmt = format_datetime(TimeGenerated, "MM/dd/yyyy HH:mm:ss"),
+    Mitre_Tactic = "Credential Access",
+    Mitre_ID = "T1110",
+    Description = "Policy Status:"
