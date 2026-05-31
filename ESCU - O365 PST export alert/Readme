@@ -1,1 +1,20 @@
+Description
+This rule detects instances where an Office 365 user initiates an eDiscovery search or exports mailbox data to a PST file. Such actions may be legitimate for compliance or legal purposes but can also indicate potential data exfiltration or insider threats if performed unexpectedly or by unauthorized accounts. The detection leverages OfficeActivity logs to identify 'SearchStarted' and 'ExportResults' events, summarizing details such as user identity, IP address, and user agent. Close monitoring of these events helps prevent unauthorized access to sensitive mailbox content.
+
+Recommended Triage Actions:
+- Verify whether the user has legitimate authorization to perform eDiscovery searches and exports.
+- Review the scope of the search and exported data to assess potential sensitivity.
+- Check for concurrent suspicious activities from the same account or IP address.
+- Contact the user’s manager or compliance team to confirm business justification.
+- If suspicious, disable the account and escalate to the security incident response team.
+
+Category: Exfiltration Tag: SplunkMigrated
+Scheduling type
+Scheduled
+Incident correlation
+Enabled
+
+MITRE ATT&CK
+Exfiltration
+T1020: Automated Exfiltration
 
