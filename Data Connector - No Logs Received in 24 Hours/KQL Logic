@@ -1,1 +1,7 @@
-
+Usage
+| where IsBillable == true
+| summarize LastLogTime = max(TimeGenerated) by DataType
+| extend HoursSinceLastLog = datetime_diff('hour', now(), LastLogTime)
+| where HoursSinceLastLog >= 24
+| project SrcTable = DataType, LastLogTime, HoursSinceLastLog
+| order by HoursSinceLastLog desc
