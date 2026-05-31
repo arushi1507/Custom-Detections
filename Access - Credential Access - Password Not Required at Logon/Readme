@@ -1,0 +1,17 @@
+Description
+
+This rule detects when a user account is modified so that a password is not required at logon, as indicated by Windows Event ID 4738. This configuration significantly reduces account security and may allow unauthorized access without authentication. Such changes can be intentional for service accounts but are often associated with malicious activity aiming to bypass authentication controls. Recommended Triage Actions:
+- Review the account change in Active Directory to confirm legitimacy.
+- Identify the administrator or process responsible for the change.
+- Check recent login activity for the affected account.
+- Re-enable password requirements if the change is unauthorized.
+- Investigate other accounts for similar insecure configurations.
+Category: CredentialAccess Tag: SplunkMigrated
+Scheduling type
+Scheduled
+Incident correlation
+Enabled
+
+MITRE ATT&CK
+CredentialAccess
+T1110: Brute Force
