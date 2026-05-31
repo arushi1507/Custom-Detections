@@ -1,1 +1,5 @@
-
+AuditLogs
+//| where TimeGenerated >= ago(90d)
+| where ActivityDisplayName has_any('Set federation settings on domain','Set domain authentication','Add verified domain','Add unverified domain')
+| extend TargetResource = parse_json(TargetResources) 
+| project TimeGenerated, ActivityDateTime, Category, SourceSystem, ActivityDisplayName, Result, TargetDomain=TargetResource[0].displayName, AADTenantId, OperationName, InitiatedBy=coalesce(InitiatedBy.user.userPrincipalName,InitiatedBy.app.displayName), IPAddress=InitiatedBy.user.ipAddress, AdditionalDetails, Type
