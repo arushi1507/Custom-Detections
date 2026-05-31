@@ -1,0 +1,29 @@
+let SuspiciousParentProcess = pack_array("WINWORD.EXE", "EXCEL.EXE", "POWERPNT.exe", "MSPUB.exe", "VISIO.exe", "MSACCESS.EXE", "EQNEDT32.EXE", "WINPROJ.EXE", "Excelcnv.exe", "Onenote.exe", "Onenotem.exe");
+let SuspiciousProcess = pack_array("cmd.exe", "powershell.exe", "wscript.exe", "cscript.exe", "sh.exe", "bash.exe", "scrcons.exe", "schtasks.exe", "regsvr32.exe", "hh.exe", "wmic.exe", "mshta.exe", "rundll32.exe", "msiexec.exe", "forfiles.exe", "scriptrunner.exe", "mftrace.exe", "AppVLP.exe", "svchost.exe", "msbuild.exe", "msdt.exe", "verclsid.exe");
+let SecurityEvents = SecurityEvent
+| where EventID  == "4688"
+| where ParentProcessName has_any (SuspiciousParentProcess)
+| where Process has_any (SuspiciousProcess);
+let SentinelOneEvents = 
+SentinelOneActivities_CL
+| where Data has_all('sourceparentprocessname','sourceprocessname')
+| extend data=parse_json(Data)
+| where data.sourceparentprocessname has_any(SuspiciousParentProcess) and data.sourceprocessname has_any (SuspiciousProcess)
+| extend parent_process = coalesce(data.sourceparentprocesscommandline,'n/a'), 
+         process = coalesce(data.sourceprocesscommandline,'n/a'), 
+         dest = coalesce(data.origagentname,'n/a'), 
+         srcuser = coalesce(data.sourceprocessusername,'n/a'), 
+         dest_port = coalesce(data.dstport,'n/a'), 
+         registrypath = coalesce(data.registrypath,'n/a'),
+         hashes = pack_array(data.sourceprocesssha1, data.sourceprocesssha256, data.sourceprocessmd5, data.sourceparentprocessmd5, data.sourceparentprocesssha1, data.sourceparentprocesssha256);
+// union of both the data sets 
+union isfuzzy=true SecurityEvents, SentinelOneEvents
+| extend parent_process = coalesce(ParentProcessName, parent_process) 
+| extend process = coalesce(Process, process) 
+| extend dest = coalesce(Computer, dest)
+| extend srcuser = coalesce(Account, srcuser) 
+| where not(process matches regex @'(?i)^seveso\.xlsm$'
+         or process matches regex @'(?i)\.pdf$'
+         or process matches regex @'(?i)\.bat$')
+| summarize earliest_time=min(TimeGenerated), latest_time=max(TimeGenerated), makeset(parent_process), makeset(process), makeset(srcuser), makeset(dest_port), makeset(registrypath), makeset(PrimaryDescription) by dest, Type
+| extend UC = "MPG 4.4e - Execution - Suspicious Macros Executed" 
