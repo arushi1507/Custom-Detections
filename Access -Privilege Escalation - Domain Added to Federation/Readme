@@ -1,1 +1,20 @@
 
+Description
+This detection monitors for the addition of new domains to Azure AD federation settings, which can indicate potential privilege escalation attempts. Adding an external or unauthorized domain to federation can allow attackers to authenticate users from that domain and gain access to resources. The rule leverages Office 365 Management Activity logs and Azure AD AuditLogs to identify suspicious domain federation changes, excluding known trusted domains. Such activities are high-risk because they can bypass normal authentication controls and extend trust to malicious domains.
+
+Recommended Triage Actions:
+- Review the added domain and verify its ownership and legitimacy.
+- Identify the user or application that initiated the change and confirm whether it was authorized.
+- Check recent sign-ins or activities from the newly federated domain.
+- If unauthorized, remove the domain from federation immediately and reset affected credentials.
+- Investigate for possible compromise of administrative accounts.
+
+Category: PriviledgeEscalation Tag: SplunkMigrated
+Scheduling type
+Scheduled
+Incident correlation
+Enabled
+
+MITRE ATT&CK
+PrivilegeEscalation
+T1484: Domain or Tenant Policy Modification
