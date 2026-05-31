@@ -1,1 +1,6 @@
-
+OfficeActivity
+| where Operation in ("SearchStarted","ExportResults")
+| extend user = tostring(UserId), action = Operation, activityTime = TimeGenerated
+| summarize activity_count = count(), distinct_actions = make_set(action), ip_address = make_set(ClientIP), user_agent = make_set(UserAgent), firstTime = min(TimeGenerated), lastTime = max(TimeGenerated) by user
+| where activity_count >= 1 or array_length(distinct_actions) == 2
+| project user, distinct_actions, firstTime, lastTime
