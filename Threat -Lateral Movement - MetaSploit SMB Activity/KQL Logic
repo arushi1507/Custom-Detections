@@ -1,1 +1,7 @@
-
+SecurityEvent
+| where EventID in (529, 4625, 4776, 528, 4624)
+| extend Workstation = coalesce(WorkstationName, Computer)
+| where isnotempty(Workstation)
+// Matches 16-char alphanumeric workstation names containing unusual patterns like 5 consonants, AbC/aBc, or letter-digit-letter sequences
+| where (WorkstationName matches regex "^[A-Za-z0-9]{16}$" and WorkstationName matches regex ".*(([^aeiouAEIOU0-9]{5})|([A-Z][a-z][A-Z])|([a-z][A-Z][a-z])|([a-zA-Z][0-9][a-zA-Z])|([0-9][a-zA-Z][0-9])).*")
+| summarize Firstseen = min(TimeGenerated), LastSeen = max(TimeGenerated), IpAddresses = make_set(IpAddress), Computers = make_set(Computer), Count = count() by Workstation, Account, EventID
