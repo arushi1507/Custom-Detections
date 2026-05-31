@@ -1,1 +1,14 @@
-
+AuditLogs
+| where OperationName has "Add service principal" or OperationName has "Principal" and ActivityDisplayName == "create"
+| extend
+    signature = OperationName,
+    dest = tostring(TargetResources[0].id),
+    user = tostring(InitiatedBy.user.UserPrincipalName),
+    src = tostring(InitiatedBy.user.IPAddress),
+    vendor_account= tostring(InitiatedBy.user.id),
+    vendor_product = "AzureAD"
+| extend displayName_ = tostring(TargetResources[0].displayName)
+| summarize count(), firstTime = min(TimeGenerated), lastTime = max(TimeGenerated) by signature, dest, user, src, vendor_account, vendor_product, displayName_
+| extend
+    firstTime = format_datetime(firstTime, 'yyyy-mm-dd HH:mm:ss'),
+    lastTime = format_datetime(lastTime, 'yyyy-mm-dd HH:mm:ss')
