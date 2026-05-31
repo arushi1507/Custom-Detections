@@ -1,1 +1,21 @@
+Description
+
+This rule detects password reset events for the Kerberos service account 'krbtgt', which is a highly sensitive account used in Active Directory for ticket granting. Unauthorized password changes to this account can indicate an attacker attempting to establish persistence by manipulating Kerberos authentication. The detection focuses on specific Windows Event IDs related to password reset and change activities, excluding known benign activity. Such changes can disrupt authentication services or enable Golden Ticket attacks if performed maliciously.
+
+Recommended Triage Actions:
+- Verify whether the password reset was performed by authorized personnel as part of a planned security procedure.
+- Review related account activity for signs of compromise, including unusual logon locations or times.
+- Check for other suspicious Kerberos-related events in the same timeframe.
+- If malicious intent is suspected, initiate incident response procedures and reset the krbtgt password twice to invalidate forged tickets.
+
+Category: Persistence Tag: SplunkMigrated
+Scheduling type
+Scheduled
+Incident correlation
+Enabled
+
+MITRE ATT&CK
+
+Persistence
+T1098: Account Manipulation
 
