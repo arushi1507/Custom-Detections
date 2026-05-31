@@ -1,1 +1,20 @@
 
+Description
+This detection identifies when a new service principal is added in Office 365/Azure Active Directory. Service principals are identities used by applications, services, and automation tools to access resources. Unauthorized or unexpected creation of service principals can indicate potential abuse for persistence or privilege escalation. Monitoring these events helps ensure that only approved applications and identities are granted access.
+
+Recommended Triage Actions:
+- Review the initiating user account and confirm if the action was authorized.
+- Check the source IP address and location for anomalies.
+- Identify the application or service associated with the service principal.
+- Investigate recent activities by the initiating account for suspicious behavior.
+- Disable or remove unauthorized service principals.
+
+Category: Persistence 
+Scheduling type
+Scheduled
+Incident correlation
+Enabled
+
+MITRE ATT&CK
+Persistence
+T1136: Create Account
