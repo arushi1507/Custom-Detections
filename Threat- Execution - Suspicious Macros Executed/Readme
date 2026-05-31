@@ -1,0 +1,17 @@
+Description
+
+This rule detects instances where Microsoft Office applications such as Word, Excel, or PowerPoint spawn potentially dangerous child processes, which may indicate malicious macro execution. Attackers often embed VBA macros in documents to run system commands or scripts, enabling malware installation, persistence, or further exploitation. The query correlates parent processes from Office applications with suspicious command-line interpreters or scripting engines to flag abnormal behavior. Recommended Triage Actions:
+- Review the originating document and determine if it was received from a trusted source.
+- Check the macro content for obfuscated or malicious code.
+- Investigate the spawned process command lines for indicators of compromise.
+- Isolate affected endpoints and run a full malware scan.
+- Review user activity and recent email attachments to identify possible phishing campaigns.
+Category: Execution Tag: SplunkMigrated
+Scheduling type
+Scheduled
+Incident correlation
+Enabled
+
+MITRE ATT&CK
+Execution
+T1204: User Execution
