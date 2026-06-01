@@ -1,0 +1,61 @@
+let ImpacketPatterns = dynamic([
+'All.cab', '.ntds.cleartext', 'dcsync.txt', 'manp*dump', 'goldenPac', 'karmaSMB',
+'kintercept', 'ntlmrelayx', 'rpcdump', 'samrdump', 'secretsdump', 'smbexec',
+'smbrelayx', 'wmiexec', 'wmipersist', 'atexec_windows', 'dcomexec_windows',
+'dpapi_windows', 'findDelegation_windows', 'GetADUsers_windows', 'GetNPUsers_windows',
+'getPac_windows', 'getST_windows', 'getTGT_windows', 'mimikatz_windows',
+'ifmap_windows', 'GetUserSPNs_windows', 'netview_windows',
+'nmapAnswerMachine_windows', 'opdump_windows', 'rdp_check_windows',
+'sambaPipe_windows', 'smbclient_windows', 'smbserver_windows',
+'sniffer_windows', 'sniff_windows', 'split_windows', 'ticketer_windows'
+]);
+
+// Exception list (generic)
+let exceptions_812c = datatable(User:string, ProcessPath:string)
+[
+    'user1', @'C:\Windows\System32\legit.exe',
+    'user2', @'C:\Program Files\SafeApp\trusted.exe',
+    'user3', @'C:\Program Files\SafeApp\trusted.exe',
+    'gMSA_ITSCHTASKS$', "*pdftk.exe*",
+    '*gMSA_ITSCHTASKS$*', "*SwithMail.exe*",
+    '*', @'C:\Windows\System32\notepad.exe',
+    '<service_account>', @'*crashpad_handler.exe*',
+    '*', @'*excel.exe*'
+];
+
+let exception_users = exceptions_812c | distinct User;
+let exception_paths = exceptions_812c | distinct ProcessPath;
+
+DeviceProcessEvents
+| where Timestamp > ago(7d)
+| where (
+    ProcessCommandLine has_any(ImpacketPatterns)
+    or (
+        InitiatingProcessFileName =~ 'svchost.exe'
+        and ProcessCommandLine has '.tmp'
+        and ProcessCommandLine has 'System32'
+    )
+)
+| where not(InitiatingProcessAccountName in~ (exception_users))
+| where not(FolderPath in~ (exception_paths))
+| summarize 
+    Timestamp=min(Timestamp), 
+    ReportId=take_any(ReportId), 
+    DeviceId=take_any(DeviceId),
+    Actions=make_set(ActionType),
+    ProcessValues=make_set(ProcessCommandLine),
+    ParentProcessName=make_set(InitiatingProcessParentFileName),
+    ProcessPath=make_set(FolderPath),
+    ProcessName=make_set(FileName),
+    ParentProcessId=make_set(InitiatingProcessParentId),
+    User=make_set(InitiatingProcessAccountName),
+    ParentProcess=make_set(InitiatingProcessParentFileName),
+    Process=make_set(ProcessCommandLine),
+    FileHash=make_set(SHA256),
+    ProcessHash=make_set(SHA1)
+by InitiatingProcessAccountName, DeviceName
+| extend Description = strcat('Impacket usage detected for user ', InitiatingProcessAccountName, ' on device: ', DeviceName)
+| extend UC = 'Credential Access - OS Credential Dumping via Impacket'
+| extend Mitre_ID = 'T1003'
+| extend Mitre_Tactic = 'Credential access'
+| project-reorder Timestamp, ReportId, DeviceId
