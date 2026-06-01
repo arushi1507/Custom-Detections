@@ -1,0 +1,17 @@
+let Tor_Exception = datatable(Hostname:string)
+[
+    'host-01',
+    'host-02'
+];
+DeviceProcessEvents
+| where Timestamp > ago(24h)
+| where InitiatingProcessFileName =~ 'tor.exe' or FileName =~ 'tor.exe'
+| extend Hostname = tostring(DeviceName)
+| where not(Hostname in~ (Tor_Exception))
+| summarize Timestamp=min(Timestamp), ReportId=take_any(ReportId), DeviceId=take_any(DeviceId),
+          parent_process=take_any(InitiatingProcessParentFileName),
+          arguments_passed=take_any(ProcessCommandLine),
+          user=take_any(InitiatingProcessAccountName),
+          Intel_Name=take_any('TOR Browser Process Running'),
+          count=count() by Hostname
+| project-reorder Timestamp, ReportId, DeviceId, Hostname, parent_process, arguments_passed, user, Intel_Name, count
