@@ -1,0 +1,77 @@
+
+// Sensitive AD groups (can be externalized to watchlist)
+let SensitiveGroupName = dynamic([
+    'Account Operators',
+    'Administrators',
+    'Domain Admins',
+    'Backup Operators',
+    'Domain Controllers',
+    'Enterprise Admins',
+    'Enterprise Read-only Domain Controllers',
+    'Group Policy Creator Owners',
+    'Incoming Forest Trust Builders',
+    'Microsoft Exchange Servers',
+    'Network Configuration Operators',
+    'Print Operators',
+    'Read-only Domain Controllers',
+    'Replicator',
+    'Schema Admins',
+    'Server Admins',
+    'Server Operators',
+    'Cert Publishers'
+]);
+
+// Time + detection parameters
+let CorrelationWindow = 60m;
+
+IdentityDirectoryEvents
+| where Application == 'Active Directory'
+| where ActionType == 'Group Membership changed'
+| where isnotempty(TargetAccountUpn)
+| where isnotempty(DestinationDeviceName)   // avoid sync noise
+
+// Extract fields
+| extend
+    ToGroup = tostring(parse_json(AdditionalFields).['TO.GROUP']),
+    FromGroup = tostring(parse_json(AdditionalFields).['FROM.GROUP'])
+
+// Derive action + group
+| extend
+    Action = iff(isempty(ToGroup), 'Remove', 'Add'),
+    GroupModified = iff(isempty(ToGroup), FromGroup, ToGroup)
+
+// Filter sensitive groups
+| where GroupModified in~ (SensitiveGroupName)
+
+// Select required fields
+| project Timestamp, ReportId, Action, GroupModified,
+          Target_Account = TargetAccountDisplayName,
+          Target_UPN = TargetAccountUpn,
+          DeviceName = DestinationDeviceName,
+          Actor = AccountName,
+          ActorDomain = AccountDomain,
+          AdditionalFields
+
+// Correlation (Add + Remove within timeframe)
+| summarize
+    FirstSeen = min(Timestamp),
+    LastSeen = max(Timestamp),
+    Actions = make_set(Action),
+    ReportId = take_any(ReportId)
+by GroupModified, Target_UPN, Target_Account, DeviceName, Actor, ActorDomain, tostring(AdditionalFields)
+
+// Enrich device info
+| lookup kind=leftouter (
+    DeviceInfo
+    | summarize arg_max(Timestamp, DeviceId) by DeviceName
+) on DeviceName
+
+// Detect suspicious toggle behavior
+| where Actions has_all ('Add','Remove')
+| extend DurationMinutes = datetime_diff('minute', LastSeen, FirstSeen)
+| where DurationMinutes < 60
+
+| project Timestamp = FirstSeen, LastSeen, DurationMinutes,
+          GroupModified, Target_UPN, Target_Account,
+          DeviceName, DeviceId, Actor, ActorDomain, Actions, ReportId
+| sort by LastSeen desc
