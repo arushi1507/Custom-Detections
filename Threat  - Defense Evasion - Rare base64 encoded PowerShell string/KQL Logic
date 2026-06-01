@@ -1,0 +1,46 @@
+// Configurable parameters
+let Lookback = 24h;
+let SuspiciousParentProcesses = dynamic(['powershell', 'powershell_ise', 'pwsh']);
+let EncodedCommandFlags = dynamic(['-EncodedCommand', '-enc', '-ec', '-en']);
+let KnownBenignBase64 = dynamic([
+    'cABvAHcAZQByAHMAaABlAGwAbAAuAGUAeABlACAALQBPAHUAdABwAHUAdABGAG8AcgBtAGEAdAAgAHQAZQB4AHQAIAAtAE4AbwBu',
+    'IABbAEUAbgB2AGkAcgBvAG4AbQBlAG4AdABdADoAOgBPAFMAVgBlAHIAcwBpAG8AbgAuAFYAZQByAHMAaQBvAG4AIAA='
+]);
+let SourceThreshold = 3;
+DeviceProcessEvents
+| where Timestamp > ago(Lookback)
+| where InitiatingProcessParentFileName has_any (SuspiciousParentProcesses)
+| where InitiatingProcessCommandLine has_any (EncodedCommandFlags)
+| extend
+    base64encodedchild = extract(@'\s((?:[A-Za-z\d\+/]{4})*(?:[A-Za-z\d\+/]{3}=|[A-Za-z\d\+/]{2}==))($|\s)', 1, ProcessCommandLine),
+    base64encodedparent = extract(@'\s((?:[A-Za-z\d\+/]{4})*(?:[A-Za-z\d\+/]{3}=|[A-Za-z\d\+/]{2}==))($|\s)', 1, InitiatingProcessCommandLine)
+| where isnotempty(base64encodedchild) or isnotempty(base64encodedparent)
+| extend base64 = coalesce(base64encodedchild, base64encodedparent)
+| where not(base64 in (KnownBenignBase64))
+| extend decoded_base64 = base64_decode_tostring(base64)
+| summarize
+    distinct_source_count = dcount(DeviceId),
+    process_hash = make_set(SHA256),
+    devices = make_set(DeviceName),
+    users = make_set(InitiatingProcessAccountName),
+    process = make_set(ProcessCommandLine),
+    parent_process = make_set(InitiatingProcessCommandLine),
+    base64_values = make_set(base64),
+    decoded_values = make_set(decoded_base64),
+    FirstSeen = min(Timestamp),
+    ReportId = take_any(ReportId)
+by DeviceName, DeviceId, InitiatingProcessCommandLine
+| where distinct_source_count < SourceThreshold
+| extend
+    Mitre_ID = 'T1140',
+    Mitre_Technique = 'Deobfuscate/Decode Files or Information',
+    Mitre_Tactic = 'Defense Evasion',
+    Description = strcat(
+        'User(s): ', tostring(users),
+        ' executed encoded command. Decoded content: ',
+        tostring(decoded_values)
+    )
+| project FirstSeen, ReportId, DeviceId, devices, users,
+          process, parent_process,
+          base64_values, decoded_values,
+          process_hash, Mitre_ID, Mitre_Technique, Mitre_Tactic, Description
