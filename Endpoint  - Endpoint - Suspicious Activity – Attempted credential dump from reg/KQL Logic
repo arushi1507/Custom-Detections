@@ -1,0 +1,12 @@
+DeviceProcessEvents
+| where FileName =~ 'reg.exe'
+| where ProcessCommandLine has 'save' and (ProcessCommandLine has 'HKLM\\sam' or ProcessCommandLine has 'HKLM\\system')
+| summarize detections = count(),
+            Timestamp = min(TimeGenerated),
+            latest_time = max(TimeGenerated),
+            process = make_set(ProcessCommandLine),
+            parent_process_id = make_set(InitiatingProcessId),
+            parent_process = make_set(InitiatingProcessFileName),
+            src_user = make_set(InitiatingProcessAccountName),
+            ReportId=take_any(ReportId)
+    by AccountName, FileName, DeviceName, DeviceId, Type, ProcessId
