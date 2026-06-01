@@ -1,0 +1,22 @@
+let timeSpan = 3m;
+let LinuxDevices = DeviceInfo
+| where Timestamp >= ago(14d) and OSPlatform =~ "Linux"
+| summarize arg_max(Timestamp, DeviceId) by DeviceName
+| where isnotempty(DeviceName)
+| distinct DeviceName;
+DeviceLogonEvents | where Timestamp >= ago(1h)
+| where DeviceName has_any(LinuxDevices)
+| where ActionType in~ ('LogonSuccess','LogonFailed')
+| extend LogonStatus=iff(ActionType =~ 'LogonSuccess',1,0)
+| sort by Timestamp asc
+| summarize
+    Attempts = count(),
+    LogonFailed = countif(LogonStatus == 0),
+    LogonSuccess = countif(LogonStatus == 1),
+    LogonSeries = makelist(LogonStatus),
+    FirstFail = minif(Timestamp, LogonStatus == 0),
+    LastFail = maxif(Timestamp, LogonStatus == 0),
+    FirstSuccess = minif(Timestamp, LogonStatus == 1),
+    Timestamp = min(Timestamp),        // ✅ Required
+    ReportId = take_any(ReportId)      // ✅ Required
+  by Timespan = bin(Timestamp, timeSpan), RemoteIP, AccountName, DeviceName, DeviceId
