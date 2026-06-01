@@ -1,0 +1,34 @@
+let Lookback = 30d;
+
+// Service accounts source (can be replaced with watchlist later)
+let service_AccountName =
+    service_accounts
+    | project AccountName;
+
+// Service account whitelist (keep minimal / move to watchlist ideally)
+let svc_Account_whitelist = dynamic([
+    'svc_taskrunner','maspromo','maspromo-1','azurereportserver',
+    'svc-alteryx','svc_hsbc','svc_gdprretention','svc_pint',
+    'servicecognosbicubes','uipathincixml','svcriseanalyticsexp','bpruntime'
+]);
+
+DeviceLogonEvents
+| where TimeGenerated > ago(Lookback)
+| where LogonType endswith 'interactive'
+
+// ✅ safer match (exact vs partial issues avoided)
+| where AccountName in~ (service_AccountName)
+
+// ✅ exclude known safe / expected svc accounts
+| where not(
+    AccountName in~ (svc_Account_whitelist)
+    or AccountName matches regex @'^(svc_[a-z]{2,4}_rpabot|rpa\.bot|asoc\.itau|rpabot)\d+$'
+)
+
+| summarize
+    FirstSeen = min(Timestamp),
+    LastSeen = max(Timestamp),
+    LogonTypes = make_set(LogonType),
+    ReportId = take_any(ReportId),
+    Count = count()
+by AccountName, DeviceName, DeviceId
