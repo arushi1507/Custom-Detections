@@ -1,0 +1,62 @@
+// Configurable whitelist (move to watchlist ideally)
+let LsassWhitelist = datatable(loaded_file:string, process_path:string)
+[
+    'NavSip.dll', @'\\Device\\HarddiskVolume2\\Windows\\System32\\NavSip.dll',
+    'SentinelAmsi32.dll', @'\\Device\\HarddiskVolume1\\Program Files\\SentinelOne\\Sentinel Agent 22.1.4.10010\\SentinelAmsi32.dll'
+];
+
+let LsassWhitelistDevices = datatable(DeviceName:string)
+[
+    'host-01',
+    'host-02'
+];
+
+// Extract whitelist values
+let whitelist_paths = LsassWhitelist | distinct process_path;
+let whitelist_devices = LsassWhitelistDevices | distinct DeviceName;
+
+// Detection logic
+DeviceEvents
+| where ActionType in~ ('DriverLoad', 'CodeInjection')
+| where AdditionalFields has_any ('3065','3066','3033')
+
+// Extract fields
+| extend
+    loaded_file = extract(@'^[^\\]*\.dll$', 1, AdditionalFields),
+    process_path = extract(@'load\s+(.*dll)', 1, AdditionalFields)
+
+// Ensure valid extraction
+| where isnotempty(process_path) and isnotempty(loaded_file)
+
+// Apply whitelist exclusions
+| where process_path !in~ (whitelist_paths)
+| where DeviceName !in~ (whitelist_devices)
+
+// Aggregate results
+| summarize
+    FirstSeen = min(Timestamp),
+    DeviceCount = dcount(DeviceName),
+    Devices = make_set(DeviceName),
+    DeviceId = take_any(DeviceId),
+    Accounts = make_set(AccountName),
+    Messages = make_set(AdditionalFields),
+    Paths = make_set(process_path),
+    ParentProcesses = make_set(InitiatingProcessParentFileName),
+    ReportId = take_any(ReportId)
+by loaded_file
+
+// Enrichment
+| extend
+    Description = 'Potential LSASS driver abuse via DLL sideloading or injection techniques',
+    Mitre_Tactic = 'Execution, Persistence',
+    Mitre_ID = 'T1177'
+
+// Final projection
+| project FirstSeen, ReportId, loaded_file,
+          process_path = Paths,
+          DeviceName = Devices,
+          DeviceId,
+          AccountName = Accounts,
+          Message = Messages,
+          parent_process = ParentProcesses,
+          Description, Mitre_Tactic, Mitre_ID
