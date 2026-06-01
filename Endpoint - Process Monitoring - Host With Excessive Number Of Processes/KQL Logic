@@ -1,0 +1,7 @@
+let excludedProcesses = pack_array('TaniumExecWrapper.exe','TaniumFileInfo.exe','reg.exe','chrome.exe','conhost.exe','conhost.exe','cmd.exe','msedgewebview2.exe','updater.exe','SearchProtocolHost.exe');
+DeviceProcessEvents
+| where TimeGenerated > ago(1h)
+| where isnotempty(DeviceName) and isnotempty(DeviceId)
+| where not(FileName has_any(excludedProcesses))
+| summarize ProcessCount=dcount(FileName), Timestamp=max(Timestamp), ReportId=take_any(ReportId), makeset(FileName) by DeviceName, DeviceId
+| where ProcessCount > 250
