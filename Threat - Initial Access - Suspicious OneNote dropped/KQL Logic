@@ -1,0 +1,63 @@
+// Configurable exclusions
+let ExcludedPaths = dynamic([
+    @"\AppData\Local\Microsoft\OneNote\",
+    @"LocalState\AppData\Local\OneNote"
+]);
+let ExcludedUrlPatterns = dynamic([
+    @'.microsoft.com', @'.digicert.com', @'.azure.com',
+    @'login.live.com', @'.windows.com', @'.sentinelone.net',
+    @'windows.net', @'microsoftonline.com', @'.passport.net'
+]);
+let CorrelationWindow = 5m;
+// Step 1: Suspicious OneNote drops
+let suspiciousDrop =
+    DeviceFileEvents
+    | where FileName endswith ".one" or FileName endswith ".onepkg"
+    | where not(FolderPath has_any (ExcludedPaths))
+    | where not(
+        InitiatingProcessFileName =~ 'ntoskrnl.exe'
+        and InitiatingProcessAccountName in~ ('system','système')
+    )
+    | project Timestamp, DeviceName, DeviceId, ReportId,
+              InitiatingProcessAccountName, FileName, FolderPath,
+              InitiatingProcessFileName, InitiatingProcessCommandLine;
+// Step 2: Network activity
+let netConnections =
+    DeviceNetworkEvents
+    | where isnotempty(RemoteUrl) or isnotempty(RemoteIP)
+    | where InitiatingProcessFileName !in~ ("onenote.exe", "explorer.exe")
+    | where not(
+        ipv4_is_private(RemoteIP)
+        or RemoteIP startswith '169.254.'
+        or RemoteIP in ('127.0.0.1')
+    )
+    | project DeviceId, Timestamp, RemoteIP, RemoteUrl,
+              InitiatingProcessFileName, InitiatingProcessCommandLine;
+
+// Step 3: Correlate file drop with network activity
+suspiciousDrop
+| join kind=inner (
+    netConnections
+    | extend dropTime = Timestamp
+) on DeviceId
+
+| where not(RemoteUrl has_any (ExcludedUrlPatterns))
+
+// Correlation logic
+| where Timestamp between (dropTime .. (dropTime + CorrelationWindow))
+
+// Normalize command line
+| extend ProcessCommandLine =
+    coalesce(InitiatingProcessCommandLine, InitiatingProcessCommandLine1)
+
+// Aggregate results
+| summarize
+    FirstSeen = min(Timestamp),
+    LastSeen = max(Timestamp),
+    ProcessCommandLine = make_set(ProcessCommandLine),
+    RemoteIPs = make_set(RemoteIP),
+    RemoteUrls = make_set(RemoteUrl),
+    ReportId = take_any(ReportId),
+    Count = count()
+by DeviceName, DeviceId, InitiatingProcessFileName,
+   FileName, FolderPath, InitiatingProcessAccountName
