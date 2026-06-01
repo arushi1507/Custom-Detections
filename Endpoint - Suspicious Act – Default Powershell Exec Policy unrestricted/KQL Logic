@@ -1,0 +1,5 @@
+DeviceProcessEvents
+| where InitiatingProcessFileName has 'reg.exe' or FileName has 'reg.exe'
+| where ProcessCommandLine has_all('add','ExecutionPolicy')
+| where ProcessCommandLine has_any('Unrestricted','Bypass')
+| summarize Timestamp=min(Timestamp), ReportId=take_any(ReportId), parent_process=make_set(InitiatingProcessParentFileName) by ProcessCommandLine, InitiatingProcessFileName, DeviceName, DeviceId
