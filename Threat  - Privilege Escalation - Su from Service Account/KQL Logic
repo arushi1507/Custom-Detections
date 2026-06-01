@@ -1,0 +1,5 @@
+let serviceAccounts=materialize(service_accounts | distinct svc_accounts=tolower(AccountName));
+DeviceProcessEvents
+| where FileName has 'su' and AccountName has_any (serviceAccounts)
+| summarize Timestamp=min(Timestamp), latest=max(Timestamp), makeset(ProcessCommandLine), Attempts=count(), ReportId=take_any(ReportId) by AccountName, DeviceName, DeviceId
+| top 51 by Attempts
