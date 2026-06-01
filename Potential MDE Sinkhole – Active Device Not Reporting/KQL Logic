@@ -1,0 +1,58 @@
+let SignInLookback = 1h;
+let RecentTelemetryLookback = 6h;
+let HistoricalLookback = 30d;
+let TelemetryGapThreshold = 6h;
+let ExpectedOnboardingStatus = "Onboarded";
+let PersonalDeviceNameRegex = @"^(desktop-|laptop-)";
+
+let DeviceIdList =
+SigninLogs
+| where TimeGenerated >= ago(SignInLookback)
+| where isnotempty(DeviceDetail.trustType) and DeviceDetail !has "{PII Removed}"
+| where not(DeviceDetail has_any ("iPhone", "Ios", "Android"))
+| extend
+    DeviceTrustType = tostring(DeviceDetail.trustType),
+    EntraDeviceId = tostring(DeviceDetail.deviceId),
+    DeviceDisplayName = tolower(tostring(DeviceDetail.displayName))
+| where not(DeviceDisplayName matches regex PersonalDeviceNameRegex)   // exclude personal devices by naming pattern
+| project DeviceTrustType, EntraDeviceId, DeviceDisplayName, UserDisplayName, UserPrincipalName, TimeGenerated
+| summarize LatestSignIn = max(TimeGenerated) by UserPrincipalName, EntraDeviceId, DeviceDisplayName, DeviceTrustType;
+
+let DevicesWithSignIns =
+DeviceIdList
+| distinct DeviceDisplayName;
+
+let LogDeviceEvents =
+DeviceEvents
+| where TimeGenerated >= ago(RecentTelemetryLookback)
+| where DeviceName has_any(DevicesWithSignIns)
+| summarize arg_max(Timestamp, DeviceId) by DeviceName
+| extend DeviceDisplayName = tolower(split(DeviceName, '.')[0]);
+
+DeviceIdList
+| join kind=leftanti (LogDeviceEvents) on DeviceDisplayName
+| lookup kind=leftouter (
+    DeviceEvents
+    | where TimeGenerated >= ago(HistoricalLookback)
+    | summarize arg_max(Timestamp, DeviceId, ReportId) by DeviceName
+    | extend
+        LastTelemetry = Timestamp,
+        DeviceDisplayName = tolower(split(DeviceName, '.')[0])
+) on DeviceDisplayName
+| lookup kind=leftouter (
+    DeviceInfo
+    | where TimeGenerated >= ago(HistoricalLookback)
+    | summarize arg_max(Timestamp, OnboardingStatus, DeviceType) by DeviceName
+    | extend DeviceDisplayName = tolower(split(DeviceName, '.')[0])
+) on DeviceDisplayName
+| where OnboardingStatus == ExpectedOnboardingStatus and isnotempty(DeviceName)
+| project-away EntraDeviceId
+| extend TimeDelta = LatestSignIn - LastTelemetry
+| where TimeDelta > TelemetryGapThreshold
+| summarize
+    UserPrincipalName = make_set(UserPrincipalName),
+    OnboardingStatus = make_set(OnboardingStatus),
+    DeviceType = make_set(DeviceType),
+    ReportId = max(ReportId)
+    by LatestSignIn, DeviceName, DeviceId, Timestamp = LastTelemetry
+| extend Reason = "Device seen in SigninLogs but no recent MDE telemetry"
