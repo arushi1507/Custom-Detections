@@ -1,0 +1,57 @@
+let suspiciousPSArgs = dynamic([
+'Export-PowerViewCSV','Get-IPAddress','Resolve-IPAddress','Convert-NameToSid','ConvertTo-SID',
+'Convert-ADName','ConvertFrom-UACValue','Add-RemoteConnection','Remove-RemoteConnection',
+'Invoke-UserImpersonation','Invoke-RevertToSelf','Request-SPNTicket','Get-DomainSPNTicket',
+'Invoke-Kerberoast','Get-PathAcl','Get-DNSZone','Get-DomainDNSZone','Get-DNSRecord',
+'Get-DomainDNSRecord','Get-NetDomain','Get-Domain','Get-NetDomainController',
+'Get-DomainController','Get-NetForest','Get-Forest','Get-NetForestDomain',
+'Get-ForestDomain','Get-NetForestCatalog','Get-ForestGlobalCatalog',
+'Find-DomainObjectPropertyOutlier','Get-NetUser','Get-DomainUser','New-DomainUser',
+'Set-DomainUserPassword','Get-UserEvent','Get-DomainUserEvent','Get-NetComputer',
+'Get-DomainComputer','Get-ADObject','Get-DomainObject','Set-ADObject','Set-DomainObject',
+'Get-ObjectAcl','Get-DomainObjectAcl','Add-ObjectAcl','Add-DomainObjectAcl',
+'Invoke-ACLScanner','Find-InterestingDomainAcl','Get-NetOU','Get-DomainOU',
+'Get-NetSite','Get-DomainSite','Get-NetSubnet','Get-DomainSubnet','Get-DomainSID',
+'Get-NetGroup','Get-DomainGroup','New-DomainGroup','Find-ManagedSecurityGroups',
+'Get-DomainManagedSecurityGroup','Get-NetGroupMember','Get-DomainGroupMember',
+'Add-DomainGroupMember','Get-NetFileServer','Get-DomainFileServer','Get-DFSshare',
+'Get-DomainDFSShare','Get-NetGPO','Get-DomainGPO','Get-NetGPOGroup',
+'Get-DomainGPOLocalGroup','Find-GPOLocation',
+'Get-DomainGPOUserLocalGroupMapping','Find-GPOComputerAdmin',
+'Get-DomainGPOComputerLocalGroupMapping','Get-DomainPolicy','Get-NetLocalGroup',
+'Get-NetLocalGroupMember','Get-NetShare','Get-NetLoggedon','Get-NetSession',
+'Get-LoggedOnLocal','Get-RegLoggedOn','Get-NetRDPSession',
+'Invoke-CheckLocalAdminAccess','Test-AdminAccess','Get-SiteName',
+'Get-NetComputerSiteName','Get-Proxy','Get-WMIRegProxy','Get-LastLoggedOn',
+'Get-WMIRegLastLoggedOn','Get-CachedRDPConnection'
+]);
+
+DeviceProcessEvents
+| where Timestamp > ago(24h)
+| where InitiatingProcessFileName in~ ('powershell.exe','powershell_ise.exe','pwsh.exe')
+| where ProcessCommandLine has_any(suspiciousPSArgs)
+| summarize 
+    Timestamp=min(Timestamp), 
+    ReportId=take_any(ReportId), 
+    action=make_set(ActionType),
+    process_values=make_set(ProcessCommandLine),
+    parent_process_name=make_set(InitiatingProcessParentFileName),
+    parent_process_path=make_set(InitiatingProcessFolderPath),
+    process_path=make_set(FolderPath),
+    process_name=make_set(FileName),
+    user=make_set(AccountName),
+    parent_process=make_set(InitiatingProcessCommandLine),
+    process=make_set(ProcessCommandLine),
+    file_hash=make_set(SHA256),
+    process_hash=make_set(SHA1)
+by DeviceName, DeviceId, InitiatingProcessParentId, bin(Timestamp, 1h)
+| extend dc_process = array_length(process)
+| extend 
+    UC = 'Discovery - Suspicious Burst of PowerShell Arguments',
+    Description = 'Suspicious PowerShell arguments executed in quick succession',
+    Mitre_ID = 'T1059',
+    Mitre_Tactic = 'Discovery'
+| project Timestamp, ReportId, DeviceName, DeviceId, action, process_values,
+          parent_process_name, parent_process_path, process_path, process_name,
+          user, parent_process, process, file_hash, process_hash,
+          dc_process, UC, Description, Mitre_ID, Mitre_Tactic
