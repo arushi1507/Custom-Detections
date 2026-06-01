@@ -1,0 +1,15 @@
+EmailEvents
+| where Timestamp > startofday(ago(15d))
+| where EmailDirection =~ "Inbound" and DeliveryAction =~ 'Delivered'
+| extend Sender = coalesce(SenderFromAddress, SenderMailFromAddress)
+| summarize StartTime=min(Timestamp), EndTime=max(Timestamp), EmailsReceived = dcount(NetworkMessageId), SenderCount = dcount(Sender) by bin(Timestamp, 1d), RecipientEmailAddress
+| make-series DailyEmailsReceivedSeries = sum(EmailsReceived) on Timestamp from startofday(ago(15d)) to now() step 1d by EmailRecipient=RecipientEmailAddress
+| extend (anomalies, score, baseline) = series_decompose_anomalies(DailyEmailsReceivedSeries, 3, -1, 'linefit')
+| where anomalies[-1] == 1 and DailyEmailsReceivedSeries[-1] >= 100
+| project-away Timestamp, score, baseline, anomalies
+| join kind=leftouter( EmailEvents
+| where TimeGenerated >= startofday(now())
+| where EmailDirection =~ "Inbound" and DeliveryAction =~ 'Delivered'
+| summarize arg_max(Timestamp,ReportId), earliest=min(Timestamp), EmailCount=dcount(NetworkMessageId), makeset(Subject) by TimeSpan=bin(Timestamp, 1h), EmailRecipient=RecipientEmailAddress, EmailSender = coalesce(SenderFromAddress, SenderMailFromAddress)
+| where EmailCount >= 100) on EmailRecipient
+| project Timestamp, ReportId, ['earliest'], EmailCount, set_Subject, EmailRecipient, EmailSender, DailyEmailsReceivedSeries
