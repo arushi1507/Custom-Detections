@@ -1,0 +1,93 @@
+let Lookback = 1h;
+// Define allowed hosts (edit as needed)
+let AllowedHosts = dynamic([
+    "host1.domain.local",
+    "host2.domain.local"
+]);
+let whitelist =
+datatable(dest:string, process:string)
+[
+    "<hostname>", @"wmic /NAMESPACE:\\root\cimv2 /NODE:localhost path Win32_OperatingSystem get FreePhysicalMemory,TotalVisibleMemorySize /FORMAT:'lib/csv.xsl':'delimiter=^@^'"
+]
+| extend
+    dest_l = tolower(dest),
+    process_l = tolower(process)
+| where dest_l in (AllowedHosts)
+| project dest_l, process_l
+| distinct dest_l, process_l;
+DeviceProcessEvents
+| where TimeGenerated >ago(Lookback)
+| where FileName in~ ("net.exe", "net1.exe", "schtasks.exe", "attrib.exe")
+| project
+    Timestamp,
+    DeviceName,
+    FileName,
+    ProcessCommandLine,
+    AccountName,
+    InitiatingProcessCommandLine,
+    InitiatingProcessFileName,
+    InitiatingProcessId
+| extend
+    process = tostring(ProcessCommandLine),
+    process_name = tostring(FileName),
+    dest = tostring(DeviceName),
+    dest_l = tolower(tostring(DeviceName)),
+    process_l = tolower(tostring(ProcessCommandLine))
+| where
+    (
+        process_name in~ ("net.exe", "net1.exe")
+        and (
+            process contains "localgroup"
+            or process contains "/add"
+            or process contains "user"
+        )
+        and (
+            process_name contains "C$"
+            or process_name contains "D$"
+            or process_name contains "admin$"
+            or process_name contains "IPC$"
+            or process_name contains "IPC"
+        )
+    )
+    or
+    (
+        process_name in~ ("net.exe", "net1.exe")
+        and (
+            process contains "share"
+            or process contains "delete"
+        )
+        and (
+            process_name contains "C$"
+            or process_name contains "D$"
+            or process_name contains "admin$"
+            or process_name contains "IPC$"
+            or process_name contains "IPC"
+        )
+    )
+    or
+    (
+        process_name contains "schtasks.exe"
+        and process contains "shutdown.exe"
+        and process contains "/r"
+        and process contains "/f"
+    )
+    or
+    (
+        process_name =~ "attrib.exe"
+        and process contains "+h"
+    )
+| where not(
+    dest_l startswith "gsd3w206c"
+    and process_l matches regex @".*c:\\.*\\rocket software\\\.~dceditor_ac.*"
+)
+| join kind=leftanti hint.strategy=broadcast whitelist on dest_l, process_l
+| summarize
+    detections = count(),
+    earliest_time = min(Timestamp),
+    latest_time = max(Timestamp),
+    user = make_set(AccountName, 128),
+    parent_process = make_set(InitiatingProcessCommandLine, 128),
+    parent_process_name = make_set(InitiatingProcessFileName, 128),
+    parent_process_id = make_set(InitiatingProcessId, 128)
+    by process, process_name, dest
+| order by latest_time desc
