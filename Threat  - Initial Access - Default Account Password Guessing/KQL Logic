@@ -1,0 +1,7 @@
+DeviceLogonEvents
+| where ActionType !in~ ('LogonSuccess','LogonSuccessAggregatedReport','LogonAttempted') and FailureReason=~ 'InvalidUserNameOrPassword'
+| where isnotempty(AccountName) and AccountName !endswith @'$' and isnotempty(AccountDomain)
+| where AccountDomain =~ tostring(split(DeviceName,'.')[0]) 
+| summarize Timestamp=min(Timestamp), Latest=max(Timestamp), FailedLogons = dcount(ReportId), ReportId=take_any(ReportId), makeset(LogonType), makeset(ActionType), AdditionalInfo=makeset(AdditionalFields) by Span=bin(TimeGenerated,5m), AccountDomain, AccountName, DeviceName, DeviceId
+| where FailedLogons >= 5
+| summarize  Timestamp=min(Timestamp), Latest=max(Latest), ReportId=take_any(ReportId), TotalFailed=sum(FailedLogons), RepeatedAttempts=dcount(tostring(Span)) by AccountDomain, AccountName, DeviceName, DeviceId, LogonType=tostring(set_LogonType), ActionType=tostring(set_ActionType), AdditionalInfo=tostring(AdditionalInfo)
