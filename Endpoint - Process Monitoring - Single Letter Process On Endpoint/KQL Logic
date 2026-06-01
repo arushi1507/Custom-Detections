@@ -1,0 +1,23 @@
+let Folder_exceptionlist = pack_array(
+    @'\Program Files\Alteryx\R-3.6.3\bin\x64\R.exe',
+    @'\Program Files\Alteryx\R-4.0.5\bin\x64\R.exe',
+    @'/dev/fd/3',
+    @'/dev/fd/5',
+    @'/unr/bin/w'
+);
+DeviceProcessEvents
+| where not(FolderPath has_any(MPG34c_exceptionlist))
+| where isnotempty(FileName) and isnotempty(FolderPath)
+| extend process_name = FileName,
+         process_name_length = strlen(FileName),
+         fileExt = tostring(parse_path(FolderPath).Extension)
+| extend endExe = iif(strlen(fileExt) == 3, 1, 0)
+| where (process_name_length == 5 and endExe == 1)
+    or (process_name_length == 1 and endExe == 0)
+| where not(DeviceName =~ 'XX100005.CORP.ROOT.GLOBAL'
+    and FolderPath startswith @'E:\Adapt\progs\bin')
+| summarize
+    Timestamp = min(TimeGenerated),
+    lastTime = max(TimeGenerated),
+    ReportId = take_any(ReportId)
+    by DeviceName, DeviceId, process_name, FolderPath
