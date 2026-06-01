@@ -1,0 +1,11 @@
+let timeSpan = 1h;
+let LinuxDevices=DeviceInfo | where Timestamp >= ago(14d) and OSPlatform =~'Linux' | summarize arg_max(Timestamp ,DeviceId) by DeviceName | where isnotempty(DeviceName) | distinct DeviceName ;
+DeviceProcessEvents | where Timestamp >= ago(14d)
+| where DeviceName has_any(LinuxDevices)
+| where FileName has_any('adduser','useradd','userdel') and ProcessCommandLine !has 'useradd -D'
+| where strlen(ProcessCommandLine) between (7 .. 200)
+| extend TargeUser = tostring(split(ProcessCommandLine,' ')[-1])
+| extend UserOperation=iff(FileName =~ 'userdel','delete','add')
+| sort by Timestamp asc
+| summarize Attempts=count(), OperationSet=makeset(UserOperation), OperationSeries=makelist(UserOperation), UserAddTimestamp=minif(Timestamp, UserOperation =~'add'), Timestamp=maxif(Timestamp,  UserOperation =~'delete'), ReportId=take_any(ReportId), Actor=makeset(AccountName), makeset(ProcessCommandLine)  by Timespan=bin(Timestamp,timeSpan), TargeUser, DeviceName, DeviceId 
+| where OperationSet has_all('delete','add')
